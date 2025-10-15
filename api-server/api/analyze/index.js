@@ -1,7 +1,6 @@
-import { AzureFunction, Context, HttpRequest } from "@azure/functions";
-import multipart from 'parse-multipart';
-import mammoth from 'mammoth';
-import Anthropic from '@anthropic-ai/sdk';
+const multipart = require('parse-multipart');
+const mammoth = require('mammoth');
+const Anthropic = require('@anthropic-ai/sdk').default;
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -9,12 +8,12 @@ const anthropic = new Anthropic({
 });
 
 // Helper function to extract text from DOCX
-async function extractTextFromBuffer(buffer: Buffer): Promise<string> {
+async function extractTextFromBuffer(buffer) {
   const result = await mammoth.extractRawText({ buffer });
   return result.value;
 }
 
-const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
+module.exports = async function (context, req) {
   context.log('Analyze function triggered');
 
   try {
@@ -39,7 +38,8 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
     }
 
     // Parse the multipart data
-    const parts = multipart.Parse(req.body, boundary);
+    const bodyBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body);
+    const parts = multipart.Parse(bodyBuffer, boundary);
 
     // Find the file part
     const filePart = parts.find(part => part.name === 'file');
@@ -72,7 +72,7 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
     const userPrompt = `Perform a COMPREHENSIVE analysis of this ${documentType || 'document'} covering WCAG 2.1 & 2.2 Level AA accessibility, UVA branding, visual hierarchy, and general best practices.
 
 Document content:
-${text}
+${text.substring(0, 10000)} // Limit to first 10k chars to avoid token limits
 
 Provide a complete analysis in this JSON format:
 {
@@ -87,7 +87,7 @@ Provide a complete analysis in this JSON format:
         "criterion": "<WCAG criterion number>",
         "description": "<what's wrong>",
         "recommendation": "<how to fix>",
-        "canAutoRemediate": <boolean>
+        "canAutoRemediate": true|false
       }
     ],
     "passedCriteria": ["<list of passed criteria>"],
@@ -96,61 +96,61 @@ Provide a complete analysis in this JSON format:
   "branding": {
     "status": "yellow",
     "statusReason": "Always yellow to remind about Frank Batten School of Public Policy branding requirements",
-    "mentionsSchool": <boolean>,
+    "mentionsSchool": true|false,
     "colorUsage": {
-      "usesUVAColors": <boolean>,
-      "properContrast": <boolean>,
+      "usesUVAColors": true|false,
+      "properContrast": true|false,
       "issues": ["<color-related issues>"]
     },
     "typography": {
-      "usesApprovedFonts": <boolean>,
+      "usesApprovedFonts": true|false,
       "issues": ["<font-related issues>"]
     },
     "logoUsage": {
-      "hasLogo": <boolean>,
-      "isCorrectlyUsed": <boolean>,
+      "hasLogo": true|false,
+      "isCorrectlyUsed": true|false,
       "issues": ["<logo-related issues>"]
     },
-    "recommendations": ["<branding recommendations>"]
+    "recommendations": ["<branding recommendations - ALWAYS include reminder to mention Frank Batten School of Public Policy>"]
   },
   "visualHierarchy": {
     "status": "red|yellow|green",
     "statusReason": "<why this status was assigned>",
     "overallScore": "<excellent|good|needs improvement|poor>",
     "sizeAndScale": {
-      "hasProperHierarchy": <boolean>,
+      "hasProperHierarchy": true|false,
       "issues": ["<issues>"],
       "recommendations": ["<improvements>"]
     },
     "colorAndContrast": {
-      "effectiveUse": <boolean>,
+      "effectiveUse": true|false,
       "issues": ["<issues>"],
       "recommendations": ["<improvements>"]
     },
     "alignment": {
-      "consistent": <boolean>,
+      "consistent": true|false,
       "scanningPattern": "<F-pattern|Z-pattern|unclear>",
       "issues": ["<issues>"],
       "recommendations": ["<improvements>"]
     },
     "proximity": {
-      "effectiveGrouping": <boolean>,
+      "effectiveGrouping": true|false,
       "issues": ["<issues>"],
       "recommendations": ["<improvements>"]
     },
     "whitespace": {
-      "adequate": <boolean>,
+      "adequate": true|false,
       "issues": ["<issues>"],
       "recommendations": ["<improvements>"]
     },
     "typography": {
-      "hierarchyClear": <boolean>,
+      "hierarchyClear": true|false,
       "fontChoices": "<appropriate|needs improvement>",
       "issues": ["<issues>"],
       "recommendations": ["<improvements>"]
     },
     "cognitiveLoad": {
-      "appropriate": <boolean>,
+      "appropriate": true|false,
       "assessment": "<low|medium|high>",
       "recommendations": ["<improvements>"]
     },
@@ -171,10 +171,12 @@ Provide a complete analysis in this JSON format:
 
 IMPORTANT STATUS RULES:
 - Accessibility: "red" if ANY critical issues, "yellow" if warnings only, "green" if all checks pass
-- Branding: ALWAYS "yellow" to remind about school name requirements
+- Branding: ALWAYS "yellow" to remind about Frank Batten School branding
 - Visual Hierarchy: "red" if poor/many issues, "yellow" if needs improvement, "green" if excellent/good
 
 Be thorough and analyze against WCAG 2.1 & 2.2 Level AA criteria, UVA brand guidelines, and visual hierarchy principles.`;
+
+    context.log('Calling Claude API...');
 
     // Call Claude API
     const message = await anthropic.messages.create({
@@ -188,6 +190,8 @@ Be thorough and analyze against WCAG 2.1 & 2.2 Level AA criteria, UVA brand guid
       ],
       system: systemPrompt
     });
+
+    context.log('Claude API response received');
 
     // Extract JSON from response
     const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
@@ -204,6 +208,7 @@ Be thorough and analyze against WCAG 2.1 & 2.2 Level AA criteria, UVA brand guid
         analysisResult = JSON.parse(responseText);
       }
     } catch (parseError) {
+      context.log.error('JSON parse error:', parseError);
       analysisResult = {
         rawResponse: responseText,
         error: 'Could not parse structured response'
@@ -234,10 +239,9 @@ Be thorough and analyze against WCAG 2.1 & 2.2 Level AA criteria, UVA brand guid
         'Content-Type': 'application/json'
       },
       body: {
-        error: error instanceof Error ? error.message : 'Analysis failed'
+        error: error.message || 'Analysis failed',
+        details: error.stack
       }
     };
   }
 };
-
-export default httpTrigger;
