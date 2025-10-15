@@ -1,4 +1,4 @@
-const multipart = require('parse-multipart');
+const Busboy = require('busboy');
 const mammoth = require('mammoth');
 const Anthropic = require('@anthropic-ai/sdk').default;
 
@@ -13,11 +13,69 @@ async function extractTextFromBuffer(buffer) {
   return result.value;
 }
 
+// Helper function to parse multipart form data using busboy
+async function parseMultipartForm(req) {
+  return new Promise((resolve, reject) => {
+    const busboy = Busboy({
+      headers: {
+        'content-type': req.headers['content-type'] || req.headers['Content-Type']
+      }
+    });
+
+    const fields = {};
+    const files = {};
+
+    busboy.on('field', (fieldname, val) => {
+      fields[fieldname] = val;
+    });
+
+    busboy.on('file', (fieldname, file, info) => {
+      const { filename, encoding, mimeType } = info;
+      const chunks = [];
+
+      file.on('data', (data) => {
+        chunks.push(data);
+      });
+
+      file.on('end', () => {
+        files[fieldname] = {
+          filename,
+          mimeType,
+          encoding,
+          data: Buffer.concat(chunks)
+        };
+      });
+    });
+
+    busboy.on('finish', () => {
+      resolve({ fields, files });
+    });
+
+    busboy.on('error', (error) => {
+      reject(error);
+    });
+
+    // Write the request body to busboy
+    if (Buffer.isBuffer(req.body)) {
+      busboy.write(req.body);
+    } else if (req.rawBody) {
+      busboy.write(req.rawBody);
+    } else if (typeof req.body === 'string') {
+      busboy.write(Buffer.from(req.body, 'binary'));
+    } else {
+      reject(new Error('Unsupported body format'));
+      return;
+    }
+
+    busboy.end();
+  });
+}
+
 module.exports = async function (context, req) {
   context.log('Analyze function triggered');
 
   try {
-    // Parse multipart form data
+    // Parse multipart form data using busboy
     const contentType = req.headers['content-type'] || req.headers['Content-Type'] || '';
     context.log('Content-Type:', contentType);
 
@@ -29,50 +87,11 @@ module.exports = async function (context, req) {
       return;
     }
 
-    // Extract boundary from content-type header manually
-    // Format is: multipart/form-data; boundary=----WebKitFormBoundary...
-    const boundaryMatch = contentType.match(/boundary=([^;]+)/i);
-    if (!boundaryMatch || !boundaryMatch[1]) {
-      context.res = {
-        status: 400,
-        body: { error: 'Invalid multipart boundary', contentType: contentType }
-      };
-      return;
-    }
-
-    const boundary = boundaryMatch[1].trim().replace(/^["']|["']$/g, ''); // Remove quotes if present
-    context.log('Extracted boundary:', boundary);
-
-    // Parse the multipart data
-    let bodyBuffer;
+    let parsedForm;
     try {
-      if (Buffer.isBuffer(req.body)) {
-        bodyBuffer = req.body;
-      } else if (req.rawBody) {
-        bodyBuffer = Buffer.from(req.rawBody, 'binary');
-      } else if (typeof req.body === 'string') {
-        bodyBuffer = Buffer.from(req.body, 'binary');
-      } else {
-        throw new Error('Unexpected request body format: ' + typeof req.body);
-      }
-      context.log('Body buffer size:', bodyBuffer.length);
-    } catch (bufferError) {
-      context.log.error('Buffer creation error:', bufferError);
-      context.res = {
-        status: 400,
-        body: {
-          error: 'Failed to create buffer from request body',
-          details: bufferError.message,
-          bodyType: typeof req.body
-        }
-      };
-      return;
-    }
-
-    let parts;
-    try {
-      parts = multipart.Parse(bodyBuffer, boundary);
-      context.log('Parsed parts count:', parts.length);
+      parsedForm = await parseMultipartForm(req);
+      context.log('Parsed files:', Object.keys(parsedForm.files));
+      context.log('Parsed fields:', Object.keys(parsedForm.fields));
     } catch (parseError) {
       context.log.error('Multipart parse error:', parseError);
       context.res = {
@@ -86,9 +105,9 @@ module.exports = async function (context, req) {
       return;
     }
 
-    // Find the file part
-    const filePart = parts.find(part => part.name === 'file');
-    if (!filePart || !filePart.data) {
+    // Get the uploaded file
+    const fileData = parsedForm.files['file'];
+    if (!fileData || !fileData.data) {
       context.res = {
         status: 400,
         body: { error: 'No file uploaded' }
@@ -96,12 +115,11 @@ module.exports = async function (context, req) {
       return;
     }
 
-    // Extract document type from form data (default to 'general')
-    const documentTypePart = parts.find(part => part.name === 'documentType');
-    const documentType = documentTypePart?.data?.toString('utf-8') || 'general';
+    // Get document type (default to 'general')
+    const documentType = parsedForm.fields['documentType'] || 'general';
 
     // Extract text from the uploaded file
-    const text = await extractTextFromBuffer(filePart.data);
+    const text = await extractTextFromBuffer(fileData.data);
 
     if (!text || text.trim().length === 0) {
       context.res = {
@@ -111,13 +129,15 @@ module.exports = async function (context, req) {
       return;
     }
 
+    context.log('Extracted text length:', text.length);
+
     // Simplified prompts for Azure Function (to reduce load time)
     const systemPrompt = `You are an expert in accessibility (WCAG 2.1 & 2.2 Level AA), UVA branding, and document analysis. Analyze the provided document and return a comprehensive assessment in JSON format.`;
 
     const userPrompt = `Perform a COMPREHENSIVE analysis of this ${documentType || 'document'} covering WCAG 2.1 & 2.2 Level AA accessibility, UVA branding, visual hierarchy, and general best practices.
 
 Document content:
-${text.substring(0, 10000)} // Limit to first 10k chars to avoid token limits
+${text.substring(0, 10000)}
 
 Provide a complete analysis in this JSON format:
 {
@@ -268,8 +288,8 @@ Be thorough and analyze against WCAG 2.1 & 2.2 Level AA criteria, UVA brand guid
       },
       body: {
         success: true,
-        fileName: filePart.filename || 'document',
-        fileType: filePart.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileName: fileData.filename || 'document',
+        fileType: fileData.mimeType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         documentType: documentType || 'general',
         extractedText: text.substring(0, 500) + '...', // Preview
         ...analysisResult // Spread analysis results
