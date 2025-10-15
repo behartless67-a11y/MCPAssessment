@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UVA Document Fixer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Franklin Gothic', Arial, sans-serif;
+            background: linear-gradient(135deg, #232D4B 0%, #E57200 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .header p {
+            font-size: 1.3em;
+            opacity: 0.95;
+            line-height: 1.5;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            flex: 1;
+            padding: 15px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 600;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.3s;
+        }
+        .tab:hover { background: rgba(255,255,255,0.3); }
+        .tab.active {
+            background: white;
+            color: #232D4B;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .card {
+            background: white;
+            border-radius: 0 0 12px 12px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .upload-area {
+            border: 3px dashed #232D4B;
+            border-radius: 12px;
+            padding: 60px 40px;
+            text-align: center;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        .upload-area:hover {
+            border-color: #E57200;
+            background: #fff5ee;
+            transform: translateY(-2px);
+        }
+        .upload-area.dragover {
+            border-color: #E57200;
+            background: #ffe4cc;
+            transform: scale(1.02);
+        }
+        textarea {
+            width: 100%;
+            min-height: 300px;
+            padding: 20px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #E57200;
+        }
+        .file-info {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+            border-left: 4px solid #232D4B;
+        }
+        .file-info.show { display: block; }
+        button.submit-btn {
+            width: 100%;
+            background: #E57200;
+            color: white;
+            border: none;
+            padding: 20px;
+            font-size: 20px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+        button.submit-btn:hover:not(:disabled) {
+            background: #c96100;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(229, 114, 0, 0.4);
+        }
+        button.submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        .loading.active { display: block; }
+        .spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #E57200;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .results {
+            display: none;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            margin-top: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .results.active { display: block; }
+        .success-icon {
+            text-align: center;
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        .results h2 {
+            color: #232D4B;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .summary-box {
+            background: #f0f7ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 5px solid #E57200;
+        }
+        .summary-item {
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .summary-item:last-child { border-bottom: none; }
+        .download-buttons {
+            display: flex;
+            gap: 15px;
+            margin: 30px 0;
+        }
+        .download-btn {
+            flex: 1;
+            padding: 20px;
+            background: #232D4B;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 18px;
+            transition: all 0.3s;
+            display: block;
+        }
+        .download-btn:hover {
+            background: #1a2338;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(35, 45, 75, 0.4);
+        }
+        .corrections {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .correction {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #E57200;
+        }
+        .correction-type {
+            display: inline-block;
+            background: #232D4B;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .info-box {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #E57200;
+        }
+        input[type="file"] { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 UVA Document Fixer</h1>
+            <p>Upload any document or paste text - AI automatically applies UVA branding and fixes everything</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('upload')">📄 Upload Document</button>
+            <button class="tab" onclick="switchTab('paste')">📝 Paste Text</button>
+        </div>
+
+        <div id="uploadTab" class="tab-content active">
+            <div class="card">
+                <div class="info-box">
+                    <strong>✨ AI will automatically:</strong>
+                    <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+                        <li>Apply UVA fonts & colors</li>
+                        <li>Add UVA logo to footer</li>
+                        <li>Fix heading hierarchy</li>
+                        <li>Ensure WCAG AA accessibility</li>
+                        <li>Add proper spacing</li>
+                    </ul>
+                </div>
+
+                <div class="upload-area" id="uploadArea">
+                    <div style="font-size:60px; margin-bottom:20px;">📁</div>
+                    <h2 style="color: #232D4B; margin-bottom: 10px;">Drop Your Document Here</h2>
+                    <p style="color: #666; font-size: 18px;">or click to browse</p>
+                    <p style="color: #999; margin-top:10px;">DOCX or PDF</p>
+                    <input type="file" id="fileInput" accept=".docx,.pdf">
+                </div>
+
+                <div class="file-info" id="fileInfo"></div>
+
+                <button class="submit-btn" id="uploadBtn" onclick="fixDocument()" disabled>
+                    🚀 Fix My Document
+                </button>
+            </div>
+        </div>
+
+        <div id="pasteTab" class="tab-content">
+            <div class="card">
+                <div class="info-box">
+                    <strong>✨ Paste any text below</strong> - AI will create a UVA-branded document with proper formatting
+                </div>
+
+                <label style="display: block; margin-bottom: 10px; color: #232D4B; font-weight: 600;">
+                    Paste your content:
+                </label>
+                <textarea id="textInput" placeholder="Example:
+
+ENGL 101 - Introduction to Literature
+
+Course Description:
+This course introduces students to...
+
+Learning Objectives:
+- Analyze literary texts
+- Write critical essays
+- Discuss themes..."></textarea>
+
+                <button class="submit-btn" onclick="fixText()">
+                    🚀 Create UVA Document
+                </button>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <h2 style="color: white;">AI is working on your document...</h2>
+            <p style="color: rgba(255,255,255,0.9); font-size: 18px;">
+                Applying UVA branding and fixing everything
+            </p>
+        </div>
+
+        <div class="results" id="results">
+            <div class="success-icon">✅</div>
+            <h2>Document Fixed!</h2>
+
+            <div class="summary-box">
+                <h3 style="margin-bottom: 15px; color: #232D4B;">What AI Fixed</h3>
+                <div class="summary-item"><strong>Total Fixes:</strong> <span id="totalFixes"></span></div>
+                <div class="summary-item"><strong>UVA Fonts Applied:</strong> <span id="fontFixes"></span></div>
+                <div class="summary-item"><strong>Accessibility Fixes:</strong> <span id="accessibilityFixes"></span></div>
+                <div class="summary-item"><strong>Hierarchy Fixed:</strong> <span id="hierarchyFixes"></span></div>
+                <div class="summary-item"><strong>UVA Logo:</strong> <span id="logoAdded"></span></div>
+            </div>
+
+            <div class="download-buttons">
+                <a href="#" id="downloadFixed" class="download-btn">📄 Download Fixed Document</a>
+                <a href="#" id="downloadLog" class="download-btn">📋 View What Changed</a>
+            </div>
+
+            <details>
+                <summary style="cursor: pointer; color: #232D4B; font-weight: 600; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                    See All Changes
+                </summary>
+                <div class="corrections" id="correctionsList"></div>
+            </details>
+
+            <button class="submit-btn" onclick="reset()" style="margin-top: 30px; background: #232D4B;">
+                Fix Another Document
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const BRAND_KIT_ID = 'brand-uva-2025';
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            if (tab === 'upload') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('uploadTab').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('pasteTab').classList.add('active');
+            }
+        }
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelect();
+        });
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (file) {
+                document.getElementById('fileInfo').classList.add('show');
+                document.getElementById('fileInfo').innerHTML = `<strong>✓ Ready:</strong> ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        }
+
+        async function fixDocument() {
+            const file = fileInput.files[0];
+            if (!file) { alert('Select a file first!'); return; }
+
+            showLoading();
+            const formData = new FormData();
+            formData.append('document', file);
+            formData.append('brandKitId', BRAND_KIT_ID);
+
+            try {
+                const res = await fetch('/api/fix-document', { method: 'POST', body: formData });
+                const result = await res.json();
+                if (result.success) showResults(result);
+                else throw new Error(result.error);
+            } catch (error) {
+                hideLoading();
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function fixText() {
+            const text = document.getElementById('textInput').value.trim();
+            if (!text) { alert('Paste some text first!'); return; }
+
+            showLoading();
+            const blob = new Blob([text], { type: 'text/plain' });
+            const file = new File([blob], 'text.txt', { type: 'text/plain' });
+            const formData = new FormData();
+            formData.append('document', file);
+            formData.append('brandKitId', BRAND_KIT_ID);
+
+            try {
+                const res = await fetch('/api/fix-document', { method: 'POST', body: formData });
+                const result = await res.json();
+                if (result.success) showResults(result);
+                else throw new Error(result.error);
+            } catch (error) {
+                hideLoading();
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function showLoading() {
+            document.querySelectorAll('.tab-content').forEach(tc => tc.style.display = 'none');
+            document.getElementById('loading').classList.add('active');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('active');
+        }
+
+        function showResults(result) {
+            hideLoading();
+            document.getElementById('results').classList.add('active');
+            document.getElementById('totalFixes').textContent = result.summary.totalFixes;
+            document.getElementById('fontFixes').textContent = result.summary.fontFixes + ' elements';
+            document.getElementById('accessibilityFixes').textContent = result.summary.accessibilityFixes + ' issues';
+            document.getElementById('hierarchyFixes').textContent = result.summary.hierarchyFixes + ' corrections';
+            document.getElementById('logoAdded').textContent = result.summary.logoAdded ? '✓ Added to footer' : 'Not added';
+            document.getElementById('downloadFixed').href = result.fixedDocument;
+            document.getElementById('downloadLog').href = result.changeLog;
+            document.getElementById('correctionsList').innerHTML = result.corrections.map(fix => `
+                <div class="correction">
+                    <span class="correction-type">${fix.type}</span>
+                    <div style="margin-top:8px;"><strong>${fix.description}</strong></div>
+                    <div style="color:#666;font-size:14px;margin-top:5px;">Location: ${fix.location}</div>
+                    ${fix.after ? `<div style="color:#28a745;margin-top:5px;">✓ ${fix.after}</div>` : ''}
+                </div>
+            `).join('');
+            document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function reset() {
+            document.getElementById('results').classList.remove('active');
+            document.querySelectorAll('.tab-content')[0].style.display = 'block';
+            document.getElementById('uploadTab').classList.add('active');
+            fileInput.value = '';
+            document.getElementById('textInput').value = '';
+            document.getElementById('fileInfo').classList.remove('show');
+            document.getElementById('uploadBtn').disabled = true;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

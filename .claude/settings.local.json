@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm install:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(timeout:*)",
+      "Read(//c/Users/bh4hb/OneDrive - University of Virginia/Desktop/AI_Working/RoomTool/**)",
+      "Bash(npm run build:*)",
+      "Bash(node:*)",
+      "Bash(taskkill:*)",
+      "Bash(where python)",
+      "Bash(where python3)",
+      "Bash(python -m pip install:*)",
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "Read(//c/Users/bh4hb/OneDrive - University of Virginia/Desktop/**)",
+      "Bash(start \"\" \"C:\\Users\\bh4hb\\OneDrive - University of Virginia\\Desktop\\AI_Working\\MCPAssessmentTool\\python-fixer\\output\\fixed-document-1760032284.docx\")",
+      "Bash(start \"\" \"C:\\Users\\bh4hb\\OneDrive - University of Virginia\\Desktop\\AI_Working\\MCPAssessmentTool\\python-fixer\\output\\fixed-document-1760032436.docx\")",
+      "Bash(pip install:*)",
+      "Bash(tasklist)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(curl http://localhost:3002/api/health)",
+      "Bash(cat:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
