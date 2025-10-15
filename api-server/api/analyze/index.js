@@ -18,28 +18,37 @@ module.exports = async function (context, req) {
 
   try {
     // Parse multipart form data
-    const contentType = req.headers['content-type'] || '';
+    const contentType = req.headers['content-type'] || req.headers['Content-Type'] || '';
+    context.log('Content-Type:', contentType);
+
     if (!contentType.includes('multipart/form-data')) {
       context.res = {
         status: 400,
-        body: { error: 'Content-Type must be multipart/form-data' }
+        body: { error: 'Content-Type must be multipart/form-data', receivedType: contentType }
       };
       return;
     }
 
-    // Get boundary from content-type header
-    const boundary = multipart.getBoundary(contentType);
-    if (!boundary) {
+    // Extract boundary from content-type header manually
+    // Format is: multipart/form-data; boundary=----WebKitFormBoundary...
+    const boundaryMatch = contentType.match(/boundary=([^;]+)/i);
+    if (!boundaryMatch || !boundaryMatch[1]) {
       context.res = {
         status: 400,
-        body: { error: 'Invalid multipart boundary' }
+        body: { error: 'Invalid multipart boundary', contentType: contentType }
       };
       return;
     }
+
+    const boundary = boundaryMatch[1].trim().replace(/^["']|["']$/g, ''); // Remove quotes if present
+    context.log('Extracted boundary:', boundary);
 
     // Parse the multipart data
     const bodyBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body);
+    context.log('Body buffer size:', bodyBuffer.length);
+
     const parts = multipart.Parse(bodyBuffer, boundary);
+    context.log('Parsed parts count:', parts.length);
 
     // Find the file part
     const filePart = parts.find(part => part.name === 'file');
