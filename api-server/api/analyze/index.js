@@ -44,11 +44,47 @@ module.exports = async function (context, req) {
     context.log('Extracted boundary:', boundary);
 
     // Parse the multipart data
-    const bodyBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body);
-    context.log('Body buffer size:', bodyBuffer.length);
+    let bodyBuffer;
+    try {
+      if (Buffer.isBuffer(req.body)) {
+        bodyBuffer = req.body;
+      } else if (req.rawBody) {
+        bodyBuffer = Buffer.from(req.rawBody, 'binary');
+      } else if (typeof req.body === 'string') {
+        bodyBuffer = Buffer.from(req.body, 'binary');
+      } else {
+        throw new Error('Unexpected request body format: ' + typeof req.body);
+      }
+      context.log('Body buffer size:', bodyBuffer.length);
+    } catch (bufferError) {
+      context.log.error('Buffer creation error:', bufferError);
+      context.res = {
+        status: 400,
+        body: {
+          error: 'Failed to create buffer from request body',
+          details: bufferError.message,
+          bodyType: typeof req.body
+        }
+      };
+      return;
+    }
 
-    const parts = multipart.Parse(bodyBuffer, boundary);
-    context.log('Parsed parts count:', parts.length);
+    let parts;
+    try {
+      parts = multipart.Parse(bodyBuffer, boundary);
+      context.log('Parsed parts count:', parts.length);
+    } catch (parseError) {
+      context.log.error('Multipart parse error:', parseError);
+      context.res = {
+        status: 400,
+        body: {
+          error: 'Failed to parse multipart data',
+          details: parseError.message,
+          stack: parseError.stack
+        }
+      };
+      return;
+    }
 
     // Find the file part
     const filePart = parts.find(part => part.name === 'file');
